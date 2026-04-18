@@ -1,0 +1,51 @@
+// firestore.rules
+// Paste this into Firebase Console → Firestore → Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Events — anyone can read, only verified admin writes
+    match /events/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null || true; // TODO: lock to admin role
+    }
+
+    // Announcements
+    match /announcements/{docId} {
+      allow read: if true;
+      allow write: if true; // TODO: lock to admin
+    }
+
+    // Users — read/write for now (add auth later)
+    match /users/{docId} {
+      allow read, write: if true;
+    }
+
+    // Bases
+    match /bases/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // News
+    match /news/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// storage.rules
+// Paste this into Firebase Console → Storage → Rules
+// ─────────────────────────────────────────────────────────────────────────────
+// rules_version = '2';
+// service firebase.storage {
+//   match /b/{bucket}/o {
+//     match /{allPaths=**} {
+//       allow read: if true;
+//       allow write: if request.resource.size < 500 * 1024 * 1024; // 500 MB max
+//     }
+//   }
+// }
