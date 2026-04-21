@@ -682,15 +682,38 @@ function ProfileModal({ user, bases, onSave, onClose }) {
 // ██  ADMIN SYSTEM  ██
 // ═══════════════════════════════════════════════════════════════
 
-function AdminLogin({ users, onLogin, onBack }) {
+function AdminLogin({ onLogin, onBack }) {
   const [fn,setFn]=useState(""), [pw,setPw]=useState(""), [err,setErr]=useState(""), [loading,setLoading]=useState(false);
-  const go=()=>{
+  const go=async()=>{
     if(!fn||!pw){setErr("Fill in all fields.");return;}
+    if(fn.length!==8){setErr("Force number must be 8 digits.");return;}
     setLoading(true);
-    setTimeout(()=>{
-      const u=users.find(u=>u.forceNumber===fn&&u.password===pw&&u.role==="admin");
-      if(u) onLogin(u); else {setErr("Invalid credentials or not an admin account.");setLoading(false);}
-    },800);
+    setErr("");
+    try {
+      const { signInWithEmailAndPassword } = await import("firebase/auth");
+      const { auth, forceNumberToEmail, db } = await import("./firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const email = forceNumberToEmail(fn);
+      const cred  = await signInWithEmailAndPassword(auth, email, pw);
+      const snap  = await getDoc(doc(db, "users", fn));
+      if (snap.exists() && snap.data().role === "admin") {
+        onLogin({ ...snap.data(), id: snap.data()._localId || fn, _firestoreId: snap.id, _authUid: cred.user.uid });
+      } else {
+        // Signed in but not admin in Firestore
+        const { signOut } = await import("firebase/auth");
+        await signOut(auth);
+        setErr("Not authorised as admin.");
+        setLoading(false);
+      }
+    } catch(e) {
+      const msg = e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
+        ? "Invalid credentials or not an admin account."
+        : e.code === "auth/too-many-requests"
+        ? "Too many attempts. Please wait a moment."
+        : "Sign in failed. Please try again.";
+      setErr(msg);
+      setLoading(false);
+    }
   };
   return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:G.bg,position:"relative",overflow:"hidden"}}>
@@ -710,12 +733,6 @@ function AdminLogin({ users, onLogin, onBack }) {
           <button className="btn btn-p" onClick={go} disabled={loading} style={{width:"100%",justifyContent:"center",padding:14,fontSize:15,marginTop:4,borderRadius:12,background:"linear-gradient(135deg,#FF6B6B,#A78BFA)"}}>
             {loading?<span style={{animation:"spin .8s linear infinite",display:"inline-block"}}>⏳</span>:"Admin Sign In →"}
           </button>
-        </div>
-        <div style={{marginTop:20,padding:"12px 14px",background:"rgba(255,255,255,.03)",borderRadius:12,border:`1px solid ${G.border}`}}>
-          <p style={{fontSize:11,color:G.muted,marginBottom:6,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Demo Admin</p>
-          <div onClick={()=>{setFn("00000001");setPw("admin123");setErr("");}} style={{fontSize:12,color:G.muted,cursor:"pointer",display:"flex",gap:8,alignItems:"center"}}>
-            <span style={{color:"#FF6B6B"}}>●</span><span style={{color:G.text,fontWeight:600}}>Admin User</span><span>· #00000001 · admin123</span>
-          </div>
         </div>
       </div>
     </div>
@@ -1311,15 +1328,36 @@ function AdminDashboard({ admin, events, setEvents, users, setUsers, announcemen
 // ═══════════════════════════════════════════════════════════════
 // USER LOGIN
 // ═══════════════════════════════════════════════════════════════
-function UserLogin({ users, onLogin, onAdminLogin }) {
+function UserLogin({ onLogin, onAdminLogin }) {
   const [fn,setFn]=useState(""), [pw,setPw]=useState(""), [err,setErr]=useState(""), [loading,setLoading]=useState(false);
-  const go=()=>{
+  const go=async()=>{
     if(!fn||!pw){setErr("Please fill in all fields.");return;}
+    if(fn.length!==8){setErr("Force number must be 8 digits.");return;}
     setLoading(true);
-    setTimeout(()=>{
-      const u=users.find(u=>u.forceNumber===fn&&u.password===pw);
-      if(u) onLogin(u); else {setErr("Invalid force number or password.");setLoading(false);}
-    },800);
+    setErr("");
+    try {
+      const { signInWithEmailAndPassword } = await import("firebase/auth");
+      const { auth, forceNumberToEmail, db } = await import("./firebase");
+      const { doc, getDoc } = await import("firebase/firestore");
+      const email = forceNumberToEmail(fn);
+      const cred  = await signInWithEmailAndPassword(auth, email, pw);
+      // Load user profile from Firestore
+      const snap  = await getDoc(doc(db, "users", fn));
+      if (snap.exists()) {
+        onLogin({ ...snap.data(), id: snap.data()._localId || fn, _firestoreId: snap.id, _authUid: cred.user.uid });
+      } else {
+        // No Firestore profile yet — create a minimal one from Auth
+        onLogin({ id: fn, forceNumber: fn, name: fn, role: "user", baseId: 1, avatar: null, firstLogin: false, _authUid: cred.user.uid });
+      }
+    } catch(e) {
+      const msg = e.code === "auth/invalid-credential" || e.code === "auth/wrong-password" || e.code === "auth/user-not-found"
+        ? "Invalid force number or password."
+        : e.code === "auth/too-many-requests"
+        ? "Too many attempts. Please wait a moment."
+        : "Sign in failed. Please try again.";
+      setErr(msg);
+      setLoading(false);
+    }
   };
   return (
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:G.bg,position:"relative",overflow:"hidden"}}>
@@ -1341,14 +1379,6 @@ function UserLogin({ users, onLogin, onAdminLogin }) {
           <button onClick={onAdminLogin} style={{background:"none",border:"1px solid rgba(255,107,107,.25)",borderRadius:10,padding:"10px",color:"#FF6B6B",fontSize:13,fontWeight:600,cursor:"pointer",transition:"all .2s",fontFamily:"DM Sans,sans-serif"}} onMouseOver={e=>e.currentTarget.style.background="rgba(255,107,107,.08)"} onMouseOut={e=>e.currentTarget.style.background="none"}>
             ⚙️ Admin Login
           </button>
-        </div>
-        <div style={{marginTop:22,padding:"14px 16px",background:"rgba(255,255,255,.03)",borderRadius:14,border:`1px solid ${G.border}`}}>
-          <p style={{fontSize:11,color:G.muted,marginBottom:8,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Demo Accounts</p>
-          {[["13008976","OTP12345","Thabo – JHB (first login)",G.accent],["13011234","OTP11111","Sipho – DBN",G.gold],["13009012","OTP67890","Zanele – CPT (first login)",G.accent2]].map(([f,p,lbl,c])=>(
-            <div key={f} onClick={()=>{setFn(f);setPw(p);setErr("");}} style={{fontSize:12,color:G.muted,marginBottom:6,cursor:"pointer",display:"flex",gap:8,alignItems:"center"}}>
-              <span style={{color:c,fontSize:10}}>●</span><span style={{color:G.text,fontWeight:600}}>{lbl}</span><span>· #{f}</span>
-            </div>
-          ))}
         </div>
       </div>
     </div>
@@ -1775,16 +1805,48 @@ export default function EventApp({
   });
 
   const handleUserLogin  = u => { if(u.firstLogin){setUser(u);setScreen("first-login");}else{setUser(u);setScreen("user-app");} };
-  const handleFirstLogin = pw => { setUsers(p=>p.map(u=>u.id===user.id?{...u,password:pw,firstLogin:false}:u)); setUser(p=>({...p,password:pw,firstLogin:false})); setScreen("user-app"); };
+
+  const handleFirstLogin = async (pw) => {
+    // Update Firebase Auth password + mark firstLogin:false in Firestore
+    try {
+      const { updatePassword } = await import("firebase/auth");
+      const { auth, forceNumberToEmail } = await import("./firebase");
+      // Re-authenticate is not needed here — user just signed in
+      if (auth.currentUser) {
+        await updatePassword(auth.currentUser, pw);
+      }
+    } catch(e) { console.warn("Password update error:", e.message); }
+    // Update local state + Firestore profile
+    setUsers(p=>p.map(u=>u.id===user.id?{...u,password:pw,firstLogin:false}:u));
+    setUser(p=>({...p,password:pw,firstLogin:false}));
+    setScreen("user-app");
+  };
+
   const handleAdminLogin = a => { setAdminUser(a); setScreen("admin-app"); };
-  const handleAdminLogout= () => { setAdminUser(null); setScreen("user-login"); };
-  const handleUserLogout = () => { setUser(null); setScreen("user-login"); };
+
+  const handleAdminLogout = async () => {
+    try {
+      const { signOut } = await import("firebase/auth");
+      const { auth } = await import("./firebase");
+      await signOut(auth);
+    } catch(e) { console.warn("Sign out error:", e.message); }
+    setAdminUser(null); setScreen("user-login");
+  };
+
+  const handleUserLogout = async () => {
+    try {
+      const { signOut } = await import("firebase/auth");
+      const { auth } = await import("./firebase");
+      await signOut(auth);
+    } catch(e) { console.warn("Sign out error:", e.message); }
+    setUser(null); setScreen("user-login");
+  };
 
   return (
     <>
       <style>{CSS}</style>
-      {screen==="user-login"  && <UserLogin  users={users} onLogin={handleUserLogin} onAdminLogin={()=>setScreen("admin-login")}/>}
-      {screen==="admin-login" && <AdminLogin users={users} onLogin={handleAdminLogin} onBack={()=>setScreen("user-login")}/>}
+      {screen==="user-login"  && <UserLogin  onLogin={handleUserLogin} onAdminLogin={()=>setScreen("admin-login")}/>}
+      {screen==="admin-login" && <AdminLogin onLogin={handleAdminLogin} onBack={()=>setScreen("user-login")}/>}
       {screen==="first-login" && <ChangePwModal onSave={handleFirstLogin}/>}
       {screen==="user-app"    && <UserApp user={user} setUser={u=>{if(!u)handleUserLogout();else setUser(u);}} events={events} users={users} setUsers={setUsers} announcements={announcements} bases={bases} news={news}/>}
       {screen==="admin-app"   && <AdminDashboard admin={adminUser} events={events} setEvents={setEvents} users={users} setUsers={setUsers} announcements={announcements} setAnnouncements={setAnnouncements} bases={bases} setBases={setBases} news={news} setNews={setNews} uploadFile={uploadFile} onLogout={handleAdminLogout}/>}

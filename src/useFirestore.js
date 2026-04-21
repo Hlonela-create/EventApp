@@ -1,13 +1,6 @@
 // src/useFirestore.js
-// ─────────────────────────────────────────────────────────────────────────────
-// Custom React hook that:
-//   • Loads a Firestore collection once on mount (seed if empty)
-//   • Subscribes to real-time updates (onSnapshot)
-//   • Returns [data, loading, error]
-//
-// Falls back to local seed data if Firebase is not yet configured
-// (i.e. still contains "YOUR_API_KEY") so the UI always renders.
-// ─────────────────────────────────────────────────────────────────────────────
+// Real-time Firestore hook + write helpers.
+// Firebase is always configured (config is in firebase.js directly).
 import { useState, useEffect, useRef } from "react";
 import {
   collection,
@@ -21,17 +14,19 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 
-const FIREBASE_CONFIGURED =
-  !process.env.REACT_APP_FIREBASE_API_KEY?.includes("YOUR") &&
-  process.env.REACT_APP_FIREBASE_API_KEY?.length > 10;
+// Always true now that real credentials are embedded in firebase.js
+export const FIREBASE_CONFIGURED = true;
 
-// Seed a collection with initial data if it's empty
+// ─────────────────────────────────────────────────────────────────────────────
+// Seed a collection with initial data if it is empty on first run
+// ─────────────────────────────────────────────────────────────────────────────
 async function seedIfEmpty(colName, seedData) {
   try {
     const { getDocs } = await import("firebase/firestore");
     const snap = await getDocs(collection(db, colName));
     if (snap.empty) {
       for (const item of seedData) {
+        // eslint-disable-next-line no-unused-vars
         const { id, ...rest } = item;
         await setDoc(doc(db, colName, String(id)), {
           ...rest,
@@ -45,20 +40,19 @@ async function seedIfEmpty(colName, seedData) {
   }
 }
 
-export function useFirestoreCollection(colName, seedData = [], sortKey = "createdAt") {
+// ─────────────────────────────────────────────────────────────────────────────
+// useFirestoreCollection
+// Subscribes to a Firestore collection in real-time.
+// Seeds initial data if collection is empty (first run).
+// Returns [data, loading, error]
+// ─────────────────────────────────────────────────────────────────────────────
+export function useFirestoreCollection(colName, seedData = []) {
   const [data, setData]       = useState(seedData);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const unsub = useRef(null);
 
   useEffect(() => {
-    if (!FIREBASE_CONFIGURED) {
-      // Firebase not set up yet — use local seed data
-      setData(seedData);
-      setLoading(false);
-      return;
-    }
-
     let mounted = true;
 
     const init = async () => {
@@ -81,6 +75,7 @@ export function useFirestoreCollection(colName, seedData = [], sortKey = "create
           err => {
             console.error(`Firestore ${colName} error:`, err);
             setError(err.message);
+            // Fall back to seed data so the UI still renders
             setData(seedData);
             setLoading(false);
           }
@@ -103,11 +98,15 @@ export function useFirestoreCollection(colName, seedData = [], sortKey = "create
   return [data, loading, error];
 }
 
-// Write helpers that work with or without Firebase
+// ─────────────────────────────────────────────────────────────────────────────
+// Write helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Upsert a document (merge: true)
 export async function fsSet(colName, id, data) {
-  if (!FIREBASE_CONFIGURED) return;
   try {
-    const { id: _, _firestoreId, ...rest } = data;
+    // eslint-disable-next-line no-unused-vars
+    const { id: _id, _firestoreId, ...rest } = data;
     await setDoc(doc(db, colName, String(id)), {
       ...rest,
       _localId: id,
@@ -116,10 +115,11 @@ export async function fsSet(colName, id, data) {
   } catch (e) { console.warn("fsSet error:", e.message); }
 }
 
+// Add a new document, returns the Firestore docId
 export async function fsAdd(colName, data) {
-  if (!FIREBASE_CONFIGURED) return String(Date.now());
   try {
-    const { id: _, _firestoreId, ...rest } = data;
+    // eslint-disable-next-line no-unused-vars
+    const { id: _id, _firestoreId, ...rest } = data;
     const ref = await addDoc(collection(db, colName), {
       ...rest,
       createdAt: serverTimestamp(),
@@ -131,12 +131,11 @@ export async function fsAdd(colName, data) {
   }
 }
 
+// Delete a document by its Firestore document ID
 export async function fsDelete(colName, firestoreId) {
-  if (!FIREBASE_CONFIGURED || !firestoreId) return;
+  if (!firestoreId) return;
   try {
     const { deleteDoc, doc: fDoc } = await import("firebase/firestore");
     await deleteDoc(fDoc(db, colName, firestoreId));
   } catch (e) { console.warn("fsDelete error:", e.message); }
 }
-
-export { FIREBASE_CONFIGURED };

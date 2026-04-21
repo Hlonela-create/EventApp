@@ -1,14 +1,6 @@
 // src/firebase.js
-// ─────────────────────────────────────────────────────────────────────────────
-// Firebase configuration
-// Replace the values below with your own Firebase project credentials.
-// How to get them:
-//   1. Go to https://console.firebase.google.com
-//   2. Create a project (or open existing)
-//   3. Project Settings → General → "Your apps" → Add web app
-//   4. Copy the firebaseConfig object shown and paste below
-// ─────────────────────────────────────────────────────────────────────────────
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import {
   getFirestore,
   collection,
@@ -33,28 +25,39 @@ import {
 } from "firebase/storage";
 import { getMessaging, getToken, onMessage } from "firebase/messaging";
 
-// ── YOUR FIREBASE CONFIG (replace with real values) ──────────────────────────
+// ── Firebase project config ───────────────────────────────────────────────────
 const firebaseConfig = {
-  apiKey:            process.env.REACT_APP_FIREBASE_API_KEY            || "YOUR_API_KEY",
-  authDomain:        process.env.REACT_APP_FIREBASE_AUTH_DOMAIN        || "YOUR_AUTH_DOMAIN",
-  projectId:         process.env.REACT_APP_FIREBASE_PROJECT_ID         || "YOUR_PROJECT_ID",
-  storageBucket:     process.env.REACT_APP_FIREBASE_STORAGE_BUCKET     || "YOUR_STORAGE_BUCKET",
-  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID|| "YOUR_SENDER_ID",
-  appId:             process.env.REACT_APP_FIREBASE_APP_ID             || "YOUR_APP_ID",
+  apiKey:            "AIzaSyBVq11dUDFpWK7ZOjHxV7rcFtPrHsEyZ90",
+  authDomain:        "eventhub-49f58.firebaseapp.com",
+  projectId:         "eventhub-49f58",
+  storageBucket:     "eventhub-49f58.firebasestorage.app",
+  messagingSenderId: "872545998325",
+  appId:             "1:872545998325:web:4d6980216b2eb60bb43cbc",
+  measurementId:     "G-05W8D3CZP5",
 };
 
-const app     = initializeApp(firebaseConfig);
-const db      = getFirestore(app);
-const storage = getStorage(app);
+const app = initializeApp(firebaseConfig);
 
-// Messaging is optional – only initialise if supported
+export const auth    = getAuth(app);
+export const db      = getFirestore(app);
+export const storage = getStorage(app);
+
+// Messaging is optional — only initialise if supported in this browser
 let messaging = null;
 try { messaging = getMessaging(app); } catch (_) {}
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AUTH HELPER
+// Converts an 8-digit force number to the internal Firebase email.
+// Users never see or type this email — the UI is unchanged.
+// ─────────────────────────────────────────────────────────────────────────────
+export function forceNumberToEmail(forceNumber) {
+  return `${forceNumber}@eventhub.app`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // UPLOAD HELPER
-// Uploads a File object to Firebase Storage and returns the public download URL.
-// path example: "events/image_1234567.jpg"
+// Uploads a File to Firebase Storage, returns the CDN download URL.
 // onProgress(0–100) optional callback
 // ─────────────────────────────────────────────────────────────────────────────
 export async function uploadFile(file, path, onProgress) {
@@ -77,8 +80,7 @@ export async function uploadFile(file, path, onProgress) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// DELETE a file from Firebase Storage by its full storage path or download URL
-// Used by Media Library "Delete" button
+// DELETE a file from Firebase Storage by its storage path
 // ─────────────────────────────────────────────────────────────────────────────
 export async function deleteStorageFile(storagePath) {
   try {
@@ -90,7 +92,7 @@ export async function deleteStorageFile(storagePath) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIRESTORE HELPERS
+// FIRESTORE HELPERS (all existing — unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const eventsCol        = () => collection(db, "events");
@@ -99,13 +101,11 @@ export const usersCol         = () => collection(db, "users");
 export const basesCol         = () => collection(db, "bases");
 export const newsCol          = () => collection(db, "news");
 
-// Get all documents in a collection
 export async function getCollection(col) {
   const snap = await getDocs(col);
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-// Get a single document by ID
 export async function getDocument(colName, id) {
   const snap = await getDoc(doc(db, colName, String(id)));
   if (!snap.exists()) return null;
@@ -129,7 +129,6 @@ export async function deleteDocument(colName, id) {
   await deleteDoc(doc(db, colName, String(id)));
 }
 
-// Real-time listener for a collection, ordered by createdAt descending
 export function subscribeCollection(colName, callback) {
   const q = query(collection(db, colName), orderBy("createdAt", "desc"));
   return onSnapshot(q, snap => {
@@ -146,7 +145,7 @@ export async function requestNotificationPermission() {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return null;
     const token = await getToken(messaging, {
-      vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY || "YOUR_VAPID_KEY",
+      vapidKey: process.env.REACT_APP_FIREBASE_VAPID_KEY || "",
     });
     return token;
   } catch (e) {
@@ -160,4 +159,4 @@ export function onForegroundMessage(callback) {
   return onMessage(messaging, callback);
 }
 
-export { db, storage, messaging };
+export { messaging };
